@@ -62,7 +62,7 @@ stages:
               GIT_ASKPASS: echo
               GIT_USERNAME: x-token
               GIT_PASSWORD: $(System.AccessToken)
-            condition: and(succeeded(), eq(variables['Build.Reason'], 'IndividualCI'))
+            condition: and(succeeded(), eq(variables['Build.Reason'], 'IndividualCI'), not(startsWith(variables['Build.SourceBranch'], 'refs/tags/')))
 
   - stage: Publish
     displayName: Publish to Artifact Feed
