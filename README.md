@@ -32,31 +32,22 @@ that together implement the full 10-role AI dev team.
 
 ## Installing on a New Machine
 
+> ADO requires authentication for raw file access, so one-liner bootstrap
+> is not supported. Clone the repo first, then run the install script.
+
 ### Windows (PowerShell)
 
 ```powershell
-irm https://dev.azure.com/VitaliiRibii/claude-skills/_git/claude-skills/raw/main/install.ps1 | iex
-```
-
-Or clone and run manually:
-
-```powershell
-git clone https://VitaliiRibii@dev.azure.com/VitaliiRibii/claude-skills/_git/claude-skills
-cd claude-skills
+git clone https://VitaliiRibii@dev.azure.com/VitaliiRibii/claude-skills/_git/claude-skills $env:USERPROFILE\claude-skills
+cd $env:USERPROFILE\claude-skills
 .\install.ps1
 ```
 
 ### macOS / Linux
 
 ```bash
-bash <(curl -fsSL https://dev.azure.com/VitaliiRibii/claude-skills/_git/claude-skills/raw/main/install.sh)
-```
-
-Or clone and run manually:
-
-```bash
-git clone https://VitaliiRibii@dev.azure.com/VitaliiRibii/claude-skills/_git/claude-skills
-cd claude-skills
+git clone https://VitaliiRibii@dev.azure.com/VitaliiRibii/claude-skills/_git/claude-skills ~/claude-skills
+cd ~/claude-skills
 bash install.sh
 ```
 
