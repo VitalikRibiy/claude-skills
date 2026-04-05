@@ -76,6 +76,8 @@ stages:
     jobs:
       - job: PublishFeed
         displayName: Publish skill packages to $(feedName)
+        pool:
+          vmImage: ubuntu-latest
         steps:
           - task: UsePythonVersion@0
             displayName: Use Python $(pythonVersion)
@@ -89,37 +91,28 @@ stages:
           - script: python build.py
             displayName: Rebuild skills for publish
 
-          # Authenticate to the ADO Artifacts feed
-          - task: TwineAuthenticate@1
-            displayName: Authenticate to $(feedName)
-            inputs:
-              artifactFeed: $(adoProject)/$(feedName)
-
-          # Publish each .skill file as a Universal Package
+          # Extract skill name and version from the tag for the publish task
           - script: |
               set -euo pipefail
-              pip install azure-devops --quiet
-
-              TAG="${BUILD_SOURCEBRANCH#refs/tags/skills/}"   # e.g. project-workspace/v1.0.0
-              SKILL_NAME="${TAG%%/v*}"                         # e.g. project-workspace
-              VERSION="${TAG##*/v}"                            # e.g. 1.0.0
-
-              ARCHIVE="dist/${SKILL_NAME}-${VERSION}.skill"
-              if [ ! -f "$ARCHIVE" ]; then
-                echo "Archive not found: $ARCHIVE"
-                exit 1
-              fi
-
-              az artifacts universal publish \
-                --organization "https://dev.azure.com/$(adoOrg)" \
-                --feed "$(feedName)" \
-                --name "$SKILL_NAME" \
-                --version "$VERSION" \
-                --path "dist/" \
-                --description "Claude skill: $SKILL_NAME v$VERSION"
-
-              echo "✅ Published $SKILL_NAME v$VERSION to $(feedName)"
-            displayName: Publish to Universal Packages feed
+              TAG="${BUILD_SOURCEBRANCH#refs/tags/skills/}"
+              SKILL_NAME="${TAG%%/v*}"
+              VERSION="${TAG##*/v}"
+              echo "##vso[task.setvariable variable=skillName]$SKILL_NAME"
+              echo "##vso[task.setvariable variable=skillVersion]$VERSION"
+              echo "Skill: $SKILL_NAME  Version: $VERSION"
+            displayName: Extract skill name and version from tag
             env:
-              AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
               BUILD_SOURCEBRANCH: $(Build.SourceBranch)
+
+          # Publish via the UniversalPackages task (uses System.AccessToken automatically)
+          - task: UniversalPackages@0
+            displayName: Publish to Universal Packages feed
+            inputs:
+              command: publish
+              publishDirectory: dist/
+              feedsToUsePublish: internal
+              vstsFeedPublish: $(adoProject)/$(feedName)
+              vstsFeedPackagePublish: $(skillName)
+              versionOption: custom
+              versionPublish: $(skillVersion)
+              packagePublishDescription: Claude skill $(skillName) v$(skillVersion)
