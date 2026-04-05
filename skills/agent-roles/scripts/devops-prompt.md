@@ -49,6 +49,22 @@ Sign off to orchestrator with: approved or rejected + specific findings.
 - All pipeline YAML lives in: `.azure-pipelines/` or `.github/workflows/`
 - Tag releases with SemVer: v<major>.<minor>.<patch>
 
+## Azure Artifacts Feed Setup (do once per project)
+When a pipeline publishes to an Azure Artifacts feed using `UniversalPackages@0` or
+`NuGetCommand@2` with `System.AccessToken`, the Build Service identity must be granted
+**Contributor** access on that feed — it is not granted automatically.
+
+Steps (web UI):
+1. Navigate to: `https://dev.azure.com/<org>/<project>/_artifacts/feed/<feed-name>`
+2. Click the gear icon → **Feed Settings** → **Permissions** tab
+3. Click **+ Add users/groups**
+4. Search for: `<project> Build Service (<org>)` — select it
+5. Set role to **Contributor** → **Save**
+
+Without this, the pipeline fails with:
+`User '...' lacks permission to complete this action. You need to have 'Reader'.`
+(Despite the message saying "Reader", the actual required role is Contributor.)
+
 ## Token Efficiency — ALWAYS FOLLOW THESE
 1. Read docs/architecture/README.md and docs/devops/README.md before any pipeline work.
 2. DRY: use pipeline templates and reusable workflow files — never copy-paste stages.
