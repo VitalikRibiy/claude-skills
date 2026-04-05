@@ -1,0 +1,122 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - skills/**
+
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  pythonVersion: "3.12"
+  feedName: "claude-skills-feed"
+  adoOrg: "VitaliiRibii"
+  adoProject: "claude-skills"
+
+stages:
+  - stage: Build
+    displayName: Build & Validate Skills
+    jobs:
+      - job: BuildSkills
+        displayName: Package skills
+        steps:
+          # ── Python setup ──────────────────────────────────────────────────
+          - task: UsePythonVersion@0
+            displayName: Use Python $(pythonVersion)
+            inputs:
+              versionSpec: $(pythonVersion)
+              addToPath: true
+
+          - script: pip install packaging pyyaml --quiet
+            displayName: Install Python dependencies
+
+          # ── Build ─────────────────────────────────────────────────────────
+          - script: python build.py
+            displayName: Build all skills
+            # build.py exits non-zero if any description exceeds 1024 chars
+
+          # ── Publish dist/ as pipeline artifact ───────────────────────────
+          - task: PublishPipelineArtifact@1
+            displayName: Publish skill archives
+            inputs:
+              targetPath: dist/
+              artifact: skills
+              publishLocation: pipeline
+
+          # ── Commit updated registry.json back to main ─────────────────────
+          - script: |
+              git config user.email "pipeline@dev.azure.com"
+              git config user.name  "Azure Pipelines"
+              git add registry.json
+              git diff --cached --quiet || git commit -m "chore: rebuild registry [skip ci]"
+              git push origin HEAD:main
+            displayName: Commit registry.json
+            env:
+              GIT_ASKPASS: echo
+              GIT_USERNAME: x-token
+              GIT_PASSWORD: $(System.AccessToken)
+            condition: and(succeeded(), eq(variables['Build.Reason'], 'IndividualCI'))
+
+  - stage: Publish
+    displayName: Publish to Artifact Feed
+    dependsOn: Build
+    # Only publish when a tag matching skills/*/v* is pushed
+    condition: |
+      and(
+        succeeded(),
+        startsWith(variables['Build.SourceBranch'], 'refs/tags/skills/')
+      )
+    jobs:
+      - job: PublishFeed
+        displayName: Publish skill packages to $(feedName)
+        steps:
+          - task: UsePythonVersion@0
+            displayName: Use Python $(pythonVersion)
+            inputs:
+              versionSpec: $(pythonVersion)
+              addToPath: true
+
+          - script: pip install packaging pyyaml --quiet
+            displayName: Install Python dependencies
+
+          - script: python build.py
+            displayName: Rebuild skills for publish
+
+          # Authenticate to the ADO Artifacts feed
+          - task: TwineAuthenticate@1
+            displayName: Authenticate to $(feedName)
+            inputs:
+              artifactFeed: $(adoProject)/$(feedName)
+
+          # Publish each .skill file as a Universal Package
+          - script: |
+              set -euo pipefail
+              pip install azure-devops --quiet
+
+              TAG="${BUILD_SOURCEBRANCH#refs/tags/skills/}"   # e.g. project-workspace/v1.0.0
+              SKILL_NAME="${TAG%%/v*}"                         # e.g. project-workspace
+              VERSION="${TAG##*/v}"                            # e.g. 1.0.0
+
+              ARCHIVE="dist/${SKILL_NAME}-${VERSION}.skill"
+              if [ ! -f "$ARCHIVE" ]; then
+                echo "Archive not found: $ARCHIVE"
+                exit 1
+              fi
+
+              az artifacts universal publish \
+                --organization "https://dev.azure.com/$(adoOrg)" \
+                --feed "$(feedName)" \
+                --name "$SKILL_NAME" \
+                --version "$VERSION" \
+                --path "dist/" \
+                --description "Claude skill: $SKILL_NAME v$VERSION"
+
+              echo "✅ Published $SKILL_NAME v$VERSION to $(feedName)"
+            displayName: Publish to Universal Packages feed
+            env:
+              AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+              BUILD_SOURCEBRANCH: $(Build.SourceBranch)
