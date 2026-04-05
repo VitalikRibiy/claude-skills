@@ -5,6 +5,9 @@ trigger:
   paths:
     include:
       - skills/**
+  tags:
+    include:
+      - skills/*/v*
 
 pr: none
 
