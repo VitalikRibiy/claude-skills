@@ -2,26 +2,23 @@
 name: agent-orchestrator
 version: 1.0.0
 description: >
-  Orchestrates a 10-role AI dev team in Warp terminal tabs via Claude Code.
-  Trigger on "Avengers assemble", "spin up the team", "start the dev team",
-  or any multi-agent workflow request. Runs a Phase 1 intake interview (new vs
-  existing project, ADO integration option), coordinates workspace init and ADO
-  setup via dependency skills, spawns agents on demand in correct sequence,
-  routes inter-agent messages from outbox to inbox, manages ticket lifecycle
-  and mandatory review gates (reviewer always, plus dba/security/devops by
-  tag), syncs tickets and docs to Azure DevOps, and handles failures.
+  Orchestrates a 10-role AI dev team in terminal tabs via Claude Code. Trigger
+  on "Avengers assemble", "spin up the team", or "start the dev team". Runs a
+  Phase 1 intake interview (new vs existing project, optional Azure DevOps
+  integration), coordinates workspace init via dependency skills, spawns agents
+  on demand in correct sequence, routes inter-agent messages from outbox to
+  inbox, manages ticket lifecycle and mandatory review gates (reviewer always,
+  plus dba/security/devops by tag), and handles failures gracefully.
 depends_on:
   - name: agent-launcher
-    version: ">=1.0.0"
-  - name: ado-integration
     version: ">=1.0.0"
 ---
 
 # Agent Orchestrator Skill
 
 You are the **Orchestrator** — the central coordinator of a 10-role software
-development team. Agents run as separate `claude` CLI instances in Warp
-terminal tabs, spawned **on demand**. You manage task assignment, inter-agent
+development team. Agents run as separate `claude` CLI instances in terminal
+windows, spawned **on demand**. You manage task assignment, inter-agent
 communication, review gates, and shared state.
 
 ---
@@ -91,13 +88,13 @@ Ask:
 
 ---
 
-### Q2 — Azure DevOps Integration?
+### Q2 — Azure DevOps Integration? (Optional)
 
 Ask:
-> "Do you want to connect to **Azure DevOps**? (work items, wiki, repos, pipelines, test plans)"
+> "Do you want to connect to **Azure DevOps**? (work items, wiki, repos, pipelines, test plans — optional)"
 
-- If yes: ask for org name, project name, and repo name. Then run Step 0.
-- If no: continue with local workspace only.
+- If yes: ask for your **ADO org name**, **project name**, and **repo name**, then run Step 0.
+- If no: continue with local workspace only. You can add ADO integration later by running `skills/ado-integration/scripts/ado-mcp-setup.py`.
 
 ---
 
@@ -208,7 +205,7 @@ Format and heatmap focus by role: see `skills/agent-roles/SKILL.md`.
 1. Monitor `./project/outbox/` for new files
 2. Parse `To:` field → deliver to `inbox/<slug>.md`
 3. If target agent not running → spawn them first
-4. Ping agent in their Warp tab: *"You have a new message in your inbox."*
+4. Ping agent in their terminal: *"You have a new message in your inbox."*
 5. Log to `./project/logs/comms.log`
 
 Message format reference: `skills/team-protocol/references/comms-protocol.md`
@@ -273,8 +270,8 @@ Full ADO agent reference: `skills/ado-integration/references/azure-devops.md`
 
 | Situation | Action |
 |---|---|
-| Agent tab closed | Alert user; relaunch — agent re-reads inbox to resume |
-| Agent unresponsive | Kill tab, relaunch, resend last inbox message |
+| Agent window closed | Alert user; relaunch — agent re-reads inbox to resume |
+| Agent unresponsive | Close window, relaunch, resend last inbox message |
 | Blocked ticket | Identify blocker owner, escalate, notify relevant agents |
 | Security P0 rejection | Immediately block ticket, escalate to architect + backend |
 | ADO auth expired | Alert user to run `az login`, retry queued operations |
@@ -292,6 +289,6 @@ Full ADO agent reference: `skills/ado-integration/references/azure-devops.md`
 | `skills/team-protocol/references/ticket-schema.md` | team-protocol | Full ticket format and status lifecycle |
 | `skills/team-protocol/references/comms-protocol.md` | team-protocol | Inter-agent message format |
 | `skills/ado-integration/scripts/ado-mcp-setup.py` | ado-integration | Cross-platform ADO MCP setup |
-| `skills/agent-launcher/scripts/launch_team.py` | agent-launcher | Cross-platform Warp tab launcher |
+| `skills/agent-launcher/scripts/launch_team.py` | agent-launcher | Cross-platform terminal launcher |
 | `skills/ado-integration/scripts/ado-addendum.md` | ado-integration | ADO instructions appended to every agent prompt |
 | `skills/project-workspace/scripts/workspace_init.py` | project-workspace | Workspace directory and stub doc initialization |

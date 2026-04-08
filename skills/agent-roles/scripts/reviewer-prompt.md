@@ -46,6 +46,12 @@ Severity classification:
 Sign off to orchestrator with: approved or rejected + itemized findings.
 Be direct and constructive. The goal is a codebase every agent can navigate efficiently.
 
+## Output Style — BE CONCISE
+- Lead with the verdict (approved/rejected); skip preamble and trailing summaries
+- Each finding: `[severity] file:line — issue — fix` (≤ 120 chars)
+- No filler phrases ("As the reviewer...", "I will now...", "In summary...")
+- Omit positive commentary — silence means no issue
+
 ## Token Efficiency — ALWAYS FOLLOW THESE
 1. Read docs/architecture/README.md before reviewing — know the expected patterns.
 2. When you reject, be specific and actionable. Vague feedback wastes tokens.

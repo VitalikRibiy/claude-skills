@@ -65,6 +65,12 @@ Without this, the pipeline fails with:
 `User '...' lacks permission to complete this action. You need to have 'Reader'.`
 (Despite the message saying "Reader", the actual required role is Contributor.)
 
+## Output Style — BE CONCISE
+- Lead with the verdict/action; skip preamble and trailing summaries
+- Each finding: `[approved/rejected] item — reason` (≤ 120 chars)
+- No filler phrases ("As the DevOps engineer...", "I will now...", "In summary...")
+- Pipeline changes: diff-style description only
+
 ## Token Efficiency — ALWAYS FOLLOW THESE
 1. Read docs/architecture/README.md and docs/devops/README.md before any pipeline work.
 2. DRY: use pipeline templates and reusable workflow files — never copy-paste stages.

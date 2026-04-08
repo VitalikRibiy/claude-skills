@@ -1,14 +1,17 @@
 # install.ps1 — Bootstrap the Claude Skills library on Windows
-# Run from PowerShell: .\install.ps1
+#
+# One-liner (run in PowerShell):
+#   irm https://raw.githubusercontent.com/VitalikRibiy/claude-skills/main/install.ps1 | iex
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$RepoUrl   = "https://VitaliiRibii@dev.azure.com/VitaliiRibii/claude-skills/_git/claude-skills"
+$RepoUrl    = "https://github.com/VitalikRibiy/claude-skills.git"
 $InstallDir = "$env:USERPROFILE\claude-skills"
 
 function Write-Step($msg) { Write-Host "`n  $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "  [OK] $msg" -ForegroundColor Green }
+function Write-Warn($msg) { Write-Host "  [WARN] $msg" -ForegroundColor Yellow }
 function Write-Fail($msg) { Write-Host "  [FAIL] $msg" -ForegroundColor Red; exit 1 }
 
 Write-Host "`n==================================================" -ForegroundColor Cyan
@@ -21,8 +24,7 @@ $python = Get-Command python -ErrorAction SilentlyContinue
 if (-not $python) {
     Write-Fail "Python not found.`n  Install from: https://www.python.org/downloads/`n  Minimum version: Python 3.10"
 }
-$pyVersion = & python --version 2>&1
-Write-Ok $pyVersion
+Write-Ok (& python --version 2>&1)
 
 # ── 2. Check Git ──────────────────────────────────────────────────────────────
 Write-Step "Checking Git..."
@@ -30,14 +32,13 @@ $git = Get-Command git -ErrorAction SilentlyContinue
 if (-not $git) {
     Write-Fail "Git not found.`n  Install from: https://git-scm.com/download/win"
 }
-$gitVersion = & git --version
-Write-Ok $gitVersion
+Write-Ok (& git --version)
 
 # ── 3. Clone or update the repo ───────────────────────────────────────────────
 Write-Step "Setting up repository at $InstallDir..."
 
 if (Test-Path (Join-Path $InstallDir ".git")) {
-    Write-Host "  Repository exists — pulling latest..." -ForegroundColor Yellow
+    Write-Warn "Repository exists — pulling latest..."
     Push-Location $InstallDir
     & git pull --quiet
     Pop-Location
@@ -46,7 +47,6 @@ if (Test-Path (Join-Path $InstallDir ".git")) {
     if (Test-Path $InstallDir) {
         Write-Fail "Directory exists but is not a git repo: $InstallDir`n  Remove it and retry."
     }
-    Write-Host "  Cloning repository..." -ForegroundColor Yellow
     & git clone $RepoUrl $InstallDir --quiet
     Write-Ok "Repository cloned to $InstallDir"
 }
@@ -58,19 +58,11 @@ Push-Location $InstallDir
 Pop-Location
 Write-Ok "packaging, pyyaml installed"
 
-# ── 5. Install agent-orchestrator (pulls all 6 skills) ────────────────────────
+# ── 5. Install agent-orchestrator (and all dependencies) ──────────────────────
 Write-Step "Installing agent-orchestrator skill (and all dependencies)..."
 Push-Location $InstallDir
-$result = & python skillman.py install agent-orchestrator 2>&1
-$exitCode = $LASTEXITCODE
+& python skillman.py install agent-orchestrator
 Pop-Location
-
-if ($exitCode -ne 0) {
-    Write-Host $result -ForegroundColor Red
-    Write-Fail "skill installation failed"
-}
-
-Write-Host $result
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 Write-Host "`n==================================================" -ForegroundColor Green
@@ -79,7 +71,7 @@ Write-Host "==================================================" -ForegroundColor
 Write-Host ""
 Write-Host "  Location:  $InstallDir" -ForegroundColor White
 Write-Host ""
-Write-Host "  To use the skill, open Claude Code and say:" -ForegroundColor White
+Write-Host "  Open Claude Code in any project directory and say:" -ForegroundColor White
 Write-Host "    'Avengers assemble'" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  To update later:" -ForegroundColor White

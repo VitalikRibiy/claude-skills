@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # install.sh — Bootstrap the Claude Skills library on macOS / Linux
-# Run: bash install.sh
+#
+# One-liner:
+#   curl -fsSL https://raw.githubusercontent.com/VitalikRibiy/claude-skills/main/install.sh | bash
 
 set -euo pipefail
 
-REPO_URL="https://VitaliiRibii@dev.azure.com/VitaliiRibii/claude-skills/_git/claude-skills"
+REPO_URL="https://github.com/VitalikRibiy/claude-skills.git"
 INSTALL_DIR="$HOME/claude-skills"
 
-# Detect OS
 OS="$(uname -s)"
 
 step()  { echo -e "\n  \033[36m▸ $*\033[0m"; }
@@ -28,8 +29,7 @@ if ! command -v python3 &>/dev/null; then
         fail "Python 3 not found.\n  Install with: sudo apt install python3 python3-pip"
     fi
 fi
-PY_VERSION="$(python3 --version)"
-ok "$PY_VERSION"
+ok "$(python3 --version)"
 
 # ── 2. Check Git ──────────────────────────────────────────────────────────────
 step "Checking Git..."
@@ -40,8 +40,7 @@ if ! command -v git &>/dev/null; then
         fail "Git not found.\n  Install with: sudo apt install git"
     fi
 fi
-GIT_VERSION="$(git --version)"
-ok "$GIT_VERSION"
+ok "$(git --version)"
 
 # ── 3. Clone or update the repo ───────────────────────────────────────────────
 step "Setting up repository at $INSTALL_DIR..."
@@ -53,7 +52,6 @@ if [[ -d "$INSTALL_DIR/.git" ]]; then
 elif [[ -d "$INSTALL_DIR" ]]; then
     fail "Directory exists but is not a git repo: $INSTALL_DIR\n  Remove it and retry."
 else
-    warn "Cloning repository..."
     git clone "$REPO_URL" "$INSTALL_DIR" --quiet
     ok "Repository cloned to $INSTALL_DIR"
 fi
@@ -63,7 +61,7 @@ step "Installing Python dependencies..."
 python3 -m pip install packaging pyyaml --quiet
 ok "packaging, pyyaml installed"
 
-# ── 5. Install agent-orchestrator ─────────────────────────────────────────────
+# ── 5. Install agent-orchestrator (and all dependencies) ─────────────────────
 step "Installing agent-orchestrator skill (and all dependencies)..."
 cd "$INSTALL_DIR"
 python3 skillman.py install agent-orchestrator
@@ -75,7 +73,7 @@ echo -e "\033[32m==================================================\033[0m"
 echo ""
 echo -e "  Location:  \033[1m$INSTALL_DIR\033[0m"
 echo ""
-echo -e "  To use the skill, open Claude Code and say:"
+echo -e "  Open Claude Code in any project directory and say:"
 echo -e "    \033[33m'Avengers assemble'\033[0m"
 echo ""
 echo -e "  To update later:"

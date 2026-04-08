@@ -10,6 +10,8 @@ Usage:
 import argparse
 import json
 import os
+import re
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -20,15 +22,35 @@ except ImportError:
     print("Error: pyyaml is required. Run: pip install pyyaml")
     sys.exit(1)
 
-BASE_DIR  = Path(__file__).parent
-SKILLS_DIR = BASE_DIR / "skills"
-DIST_DIR   = BASE_DIR / "dist"
+BASE_DIR      = Path(__file__).parent
+SKILLS_DIR    = BASE_DIR / "skills"
+DIST_DIR      = BASE_DIR / "dist"
 REGISTRY_PATH = BASE_DIR / "registry.json"
 
 MAX_DESCRIPTION_LENGTH = 1024
-ORG = "VitaliiRibii"
-FEED = "claude-skills-feed"
-PROJECT = "claude-skills"
+
+
+def get_github_raw_base() -> str:
+    """Detect the GitHub raw content base URL from git remote origin."""
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True, text=True, cwd=str(BASE_DIR)
+        )
+        if result.returncode == 0:
+            url = result.stdout.strip()
+            m = re.match(r"https?://github\.com/([\w.-]+/[\w.-]+?)(?:\.git)?$", url)
+            if m:
+                return f"https://raw.githubusercontent.com/{m.group(1)}/main"
+    except Exception:
+        pass
+    return "https://raw.githubusercontent.com/VitalikRibiy/claude-skills/main"
+
+
+def artifact_url(name: str, version: str) -> str:
+    """Build the GitHub raw content URL for a skill archive."""
+    base = get_github_raw_base()
+    return f"{base}/dist/{name}-{version}.skill"
 
 
 def parse_skill_frontmatter(skill_dir: Path) -> dict:
@@ -41,17 +63,14 @@ def parse_skill_frontmatter(skill_dir: Path) -> dict:
     if not content.startswith("---"):
         raise ValueError(f"{skill_md}: SKILL.md must start with YAML frontmatter (---)")
 
-    # Extract frontmatter between first and second ---
     parts = content.split("---", 2)
     if len(parts) < 3:
         raise ValueError(f"{skill_md}: Could not find closing --- in frontmatter")
 
-    frontmatter = yaml.safe_load(parts[1])
-    return frontmatter
+    return yaml.safe_load(parts[1])
 
 
 def validate_description(name: str, description: str):
-    """Validate description length. Exits with a clear error if too long."""
     length = len(description.strip())
     if length > MAX_DESCRIPTION_LENGTH:
         print(f"\n Build failed: description too long in skill '{name}'")
@@ -77,14 +96,6 @@ def package_skill(skill_dir: Path, frontmatter: dict) -> Path:
     return output_path
 
 
-def artifact_url(name: str, version: str) -> str:
-    """Build the ADO Universal Package download URL for a skill."""
-    return (
-        f"https://pkgs.dev.azure.com/{ORG}/{PROJECT}/_apis/packaging/feeds/"
-        f"{FEED}/upack/packages/{name}/versions/{version}"
-    )
-
-
 def load_registry() -> dict:
     if REGISTRY_PATH.exists():
         with open(REGISTRY_PATH, encoding="utf-8") as f:
@@ -100,16 +111,16 @@ def save_registry(registry: dict):
 
 def update_registry(registry: dict, frontmatter: dict):
     """Upsert a skill entry in the registry."""
-    name    = frontmatter["name"]
-    version = str(frontmatter["version"])
+    name        = frontmatter["name"]
+    version     = str(frontmatter["version"])
     description = frontmatter.get("description", "").strip()
     depends_on  = frontmatter.get("depends_on") or []
 
     entry = {
-        "name": name,
-        "version": version,
-        "description": description,
-        "depends_on": depends_on,
+        "name":         name,
+        "version":      version,
+        "description":  description,
+        "depends_on":   depends_on,
         "artifact_url": artifact_url(name, version),
     }
 
@@ -118,12 +129,11 @@ def update_registry(registry: dict, frontmatter: dict):
         if existing["name"] == name:
             skills[i] = entry
             return
-
     skills.append(entry)
 
 
-def build_skill(skill_dir: Path) -> tuple[str, str, Path]:
-    """Build one skill. Returns (name, version, output_path)."""
+def build_skill(skill_dir: Path) -> tuple:
+    """Build one skill. Returns (name, version, output_path, frontmatter)."""
     frontmatter = parse_skill_frontmatter(skill_dir)
 
     name        = frontmatter.get("name")
@@ -138,22 +148,19 @@ def build_skill(skill_dir: Path) -> tuple[str, str, Path]:
         raise ValueError(f"{skill_dir}: 'description' field missing or empty")
 
     validate_description(name, description)
-
     output_path = package_skill(skill_dir, frontmatter)
     return name, version, output_path, frontmatter
 
 
 def main():
     parser = argparse.ArgumentParser(description="Build Claude skill packages")
-    parser.add_argument("skills", nargs="*",
-                        help="Skill names to build (default: all)")
+    parser.add_argument("skills", nargs="*", help="Skill names to build (default: all)")
     args = parser.parse_args()
 
     if not SKILLS_DIR.exists():
         print(f"Error: skills/ directory not found at {SKILLS_DIR}")
         sys.exit(1)
 
-    # Determine which skills to build
     if args.skills:
         skill_dirs = []
         for name in args.skills:
@@ -174,8 +181,8 @@ def main():
     print(f"\nBuilding {len(skill_dirs)} skill(s)...\n")
 
     registry = load_registry()
-    built = []
-    errors = []
+    built    = []
+    errors   = []
 
     for skill_dir in skill_dirs:
         try:
@@ -185,7 +192,7 @@ def main():
             size_kb = output_path.stat().st_size / 1024
             print(f"  [OK] {name} v{version}  ->  {output_path.name}  ({size_kb:.1f} KB)")
         except SystemExit:
-            raise   # propagate validation errors immediately
+            raise
         except Exception as e:
             errors.append((skill_dir.name, str(e)))
             print(f"  [FAIL] {skill_dir.name}: {e}")
@@ -196,15 +203,11 @@ def main():
 
     save_registry(registry)
     print(f"\n[OK] registry.json updated ({len(built)} skills)")
-
-    print(f"""
-==================================================
-Build complete -- {len(built)} skill(s) packaged
-
-Output directory: {DIST_DIR}
-""")
+    print(f"\n{'='*50}")
+    print(f"Build complete — {len(built)} skill(s) packaged")
+    print(f"\nOutput: {DIST_DIR}")
     for name, version, path in built:
-        print(f"  {name} v{version}  ->  {path}")
+        print(f"  {name} v{version}  ->  {path.name}")
     print()
 
 

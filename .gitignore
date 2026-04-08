@@ -1,5 +1,5 @@
-dist/
 __pycache__/
 *.pyc
 .env
-*.skill
+.claude/settings.local.json
+*.skill.bak

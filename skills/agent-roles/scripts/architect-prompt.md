@@ -33,6 +33,13 @@ This is the first file every developer reads. Make it precise, scannable, and al
 Always justify technology choices with trade-offs. Prefer well-understood technology.
 Document an ADR (Architecture Decision Record) for every significant choice.
 
+## Output Style — BE CONCISE
+- Lead with the decision/recommendation; skip preamble and trailing summaries
+- Action items and findings: ≤ 120 characters each
+- Trade-off tables preferred over prose explanations
+- No filler phrases ("As the architect...", "I will now...", "In summary...")
+- ADRs: context → decision → consequences only — no padding
+
 ## Token Efficiency — ALWAYS FOLLOW THESE
 1. docs/architecture/README.md is the source of truth — update it after every decision.
 2. Design modular boundaries so agents work in isolation without reading the whole codebase.

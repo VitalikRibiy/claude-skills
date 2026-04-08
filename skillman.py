@@ -19,7 +19,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
-from urllib.request import Request, urlopen
+from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
 
 try:
@@ -29,53 +29,32 @@ except ImportError:
     print("Error: 'packaging' is required. Run: pip install packaging")
     sys.exit(1)
 
-BASE_DIR       = Path(__file__).parent
-REGISTRY_PATH  = BASE_DIR / "registry.json"
-INSTALL_DIR    = BASE_DIR / "skills"
-
-REGISTRY_URL   = "https://raw.githubusercontent.com/VitaliiRibii/claude-skills/main/registry.json"
-ADO_ORG        = "VitaliiRibii"
-ADO_PROJECT    = "claude-skills"
-ADO_FEED       = "claude-skills-feed"
+BASE_DIR      = Path(__file__).parent
+REGISTRY_PATH = BASE_DIR / "registry.json"
+INSTALL_DIR   = BASE_DIR / "skills"
 
 
-# -- Authentication ------------------------------------------------------------
-
-def get_auth_token() -> str:
-    """
-    Get an ADO access token.
-    Priority: ADO_PAT env var  az account get-access-token  error.
-    """
-    pat = os.environ.get("ADO_PAT")
-    if pat:
-        import base64
-        token = base64.b64encode(f":{pat}".encode()).decode()
-        return f"Basic {token}"
-
+def get_github_raw_base() -> str:
+    """Detect the GitHub raw content base URL from git remote origin."""
     try:
         result = subprocess.run(
-            ["az", "account", "get-access-token",
-             "--resource", "499b84ac-1321-427f-aa17-267ca6975798",
-             "--query", "accessToken", "-o", "tsv"],
-            capture_output=True, text=True, timeout=30
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True, text=True, cwd=str(BASE_DIR)
         )
-        if result.returncode == 0 and result.stdout.strip():
-            return f"Bearer {result.stdout.strip()}"
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+        if result.returncode == 0:
+            url = result.stdout.strip()
+            m = re.match(r"https?://github\.com/([\w.-]+/[\w.-]+?)(?:\.git)?$", url)
+            if m:
+                return f"https://raw.githubusercontent.com/{m.group(1)}/main"
+    except Exception:
         pass
-
-    print("\n Authentication failed. Provide credentials using one of these methods:")
-    print("   1. Set ADO_PAT environment variable to your Personal Access Token")
-    print("      (needs Packaging: Read & Write scope)")
-    print("   2. Run: az login")
-    print("      then retry  skillman will use your Azure CLI token")
-    sys.exit(1)
+    return "https://raw.githubusercontent.com/VitalikRibiy/claude-skills/main"
 
 
 # -- Registry ------------------------------------------------------------------
 
 def load_registry(remote: bool = False) -> dict:
-    """Load the skill registry. If remote=True, fetch from ADO."""
+    """Load the skill registry. If remote=True, fetch latest from GitHub."""
     if remote:
         return _fetch_remote_registry()
     if REGISTRY_PATH.exists():
@@ -85,30 +64,24 @@ def load_registry(remote: bool = False) -> dict:
 
 
 def _fetch_remote_registry() -> dict:
-    """Fetch registry.json from the ADO repo."""
-    auth = get_auth_token()
-    url = (
-        f"https://dev.azure.com/{ADO_ORG}/{ADO_PROJECT}/_apis/git/repositories/"
-        f"{ADO_PROJECT}/items?path=/registry.json&api-version=7.1"
-    )
-    req = Request(url, headers={"Authorization": auth})
+    """Fetch registry.json from GitHub."""
+    url = f"{get_github_raw_base()}/registry.json"
     try:
-        with urlopen(req, timeout=30) as resp:
+        with urlopen(url, timeout=30) as resp:
             return json.loads(resp.read().decode())
     except (HTTPError, URLError) as e:
-        # Fall back to local registry
         print(f"    Could not fetch remote registry ({e}), using local copy.")
         return load_registry(remote=False)
 
 
-def registry_index(registry: dict) -> dict[str, dict]:
+def registry_index(registry: dict) -> dict:
     """Return {name: entry} dict from registry."""
     return {s["name"]: s for s in registry.get("skills", [])}
 
 
 # -- Installed skills ----------------------------------------------------------
 
-def load_installed() -> dict[str, str]:
+def load_installed() -> dict:
     """Return {name: version} of currently installed skills."""
     installed = {}
     if not INSTALL_DIR.exists():
@@ -140,15 +113,10 @@ class DependencyError(Exception):
 def resolve_dependencies(
     target_name: str,
     target_version_spec: str,
-    index: dict[str, dict],
-    resolved: dict[str, str] = None,
+    index: dict,
+    resolved: dict = None,
     visiting: set = None,
-) -> dict[str, str]:
-    """
-    Resolve the full dependency tree for a skill.
-    Returns {name: version} of everything that needs to be installed.
-    Raises DependencyError on circular deps or version conflicts.
-    """
+) -> dict:
     if resolved is None:
         resolved = {}
     if visiting is None:
@@ -161,10 +129,9 @@ def resolve_dependencies(
     if target_name not in index:
         raise DependencyError(f"Skill '{target_name}' not found in registry")
 
-    entry = index[target_name]
+    entry             = index[target_name]
     available_version = entry["version"]
 
-    # Check version specifier
     if target_version_spec and target_version_spec != "latest":
         spec = SpecifierSet(target_version_spec)
         if Version(available_version) not in spec:
@@ -173,7 +140,6 @@ def resolve_dependencies(
                 f"but registry has {available_version}"
             )
 
-    # Check for conflict with already-resolved version
     if target_name in resolved:
         if resolved[target_name] != available_version:
             raise DependencyError(
@@ -186,25 +152,22 @@ def resolve_dependencies(
     visiting.add(target_name)
 
     for dep in entry.get("depends_on") or []:
-        dep_name = dep["name"]
-        dep_spec = dep.get("version", "")
-        resolve_dependencies(dep_name, dep_spec, index, resolved, visiting)
+        resolve_dependencies(dep["name"], dep.get("version", ""), index, resolved, visiting)
 
     visiting.remove(target_name)
     return resolved
 
 
-def topo_sort(install_plan: dict[str, str], index: dict[str, dict]) -> list[str]:
+def topo_sort(install_plan: dict, index: dict) -> list:
     """Return skill names in dependency-first order."""
-    order = []
+    order   = []
     visited = set()
 
     def visit(name: str):
         if name in visited:
             return
         visited.add(name)
-        entry = index.get(name, {})
-        for dep in entry.get("depends_on") or []:
+        for dep in (index.get(name, {}).get("depends_on") or []):
             visit(dep["name"])
         order.append(name)
 
@@ -215,8 +178,8 @@ def topo_sort(install_plan: dict[str, str], index: dict[str, dict]) -> list[str]
 
 # -- Download & install --------------------------------------------------------
 
-def download_skill(name: str, version: str, artifact_url: str, auth: str) -> Path:
-    """Download a .skill archive from ADO Artifacts. Returns local path."""
+def download_skill(name: str, version: str, artifact_url: str) -> Path:
+    """Download a .skill archive from GitHub. Returns local path."""
     dest = BASE_DIR / "dist" / f"{name}-{version}.skill"
     dest.parent.mkdir(exist_ok=True)
 
@@ -225,9 +188,8 @@ def download_skill(name: str, version: str, artifact_url: str, auth: str) -> Pat
         return dest
 
     print(f"    Downloading {name} v{version}...")
-    req = Request(artifact_url, headers={"Authorization": auth})
     try:
-        with urlopen(req, timeout=60) as resp:
+        with urlopen(artifact_url, timeout=60) as resp:
             dest.write_bytes(resp.read())
     except HTTPError as e:
         raise RuntimeError(f"Download failed for {name}: HTTP {e.code} {e.reason}")
@@ -247,8 +209,7 @@ def install_from_archive(name: str, archive_path: Path):
     print(f"   Installed {name}")
 
 
-def confirm_plan(action: str, plan_lines: list[str]) -> bool:
-    """Show the install/uninstall plan and ask for confirmation."""
+def confirm_plan(action: str, plan_lines: list) -> bool:
     print(f"\n[plan] {action} plan:")
     for line in plan_lines:
         print(f"   {line}")
@@ -259,8 +220,7 @@ def confirm_plan(action: str, plan_lines: list[str]) -> bool:
 # -- Commands ------------------------------------------------------------------
 
 def cmd_install(args):
-    raw = args.name
-    # Parse optional version pin: name==1.0.0
+    raw   = args.name
     match = re.match(r"^([a-z0-9_-]+)==(.+)$", raw)
     if match:
         name, version_pin = match.group(1), match.group(2)
@@ -279,49 +239,44 @@ def cmd_install(args):
         sys.exit(1)
 
     installed = load_installed()
-    to_install = {
-        n: v for n, v in install_plan.items()
-        if n not in installed or installed[n] != v
-    }
+    to_install = {n: v for n, v in install_plan.items()
+                  if n not in installed or installed[n] != v}
 
     if not to_install:
         print(f" '{name}' and all dependencies are already installed.")
         return
 
-    ordered = topo_sort(to_install, index)
+    ordered    = topo_sort(to_install, index)
     plan_lines = [f"+ {n} v{install_plan[n]}" for n in ordered]
 
     if not confirm_plan("Install", plan_lines):
         print("Cancelled.")
         return
 
-    auth = get_auth_token()
     for skill_name in ordered:
-        version     = to_install[skill_name]
-        entry       = index[skill_name]
-        archive     = download_skill(skill_name, version, entry["artifact_url"], auth)
+        version = to_install[skill_name]
+        entry   = index[skill_name]
+        archive = download_skill(skill_name, version, entry["artifact_url"])
         install_from_archive(skill_name, archive)
 
     print(f"\n Done. Installed {len(ordered)} skill(s).")
 
 
 def cmd_uninstall(args):
-    name = args.name
+    name      = args.name
     installed = load_installed()
 
     if name not in installed:
         print(f"'{name}' is not installed.")
         return
 
-    # Check if anything installed depends on this skill
     dependents = []
-    registry = load_registry()
-    index    = registry_index(registry)
+    registry   = load_registry()
+    index      = registry_index(registry)
     for other_name in installed:
         if other_name == name:
             continue
-        entry = index.get(other_name, {})
-        for dep in entry.get("depends_on") or []:
+        for dep in (index.get(other_name, {}).get("depends_on") or []):
             if dep["name"] == name:
                 dependents.append(other_name)
 
@@ -331,8 +286,7 @@ def cmd_uninstall(args):
             print(f"   - {d}")
         print("   Uninstalling may break them.")
 
-    plan_lines = [f"- {name} v{installed[name]}"]
-    if not confirm_plan("Uninstall", plan_lines):
+    if not confirm_plan("Uninstall", [f"- {name} v{installed[name]}"]):
         print("Cancelled.")
         return
 
@@ -355,12 +309,11 @@ def cmd_update(args):
     registry = load_registry(remote=False)
     index    = registry_index(registry)
 
-    updates = []
-    for name, current in installed.items():
-        if name in index:
-            latest = index[name]["version"]
-            if Version(latest) > Version(current):
-                updates.append((name, current, latest))
+    updates = [
+        (name, current, index[name]["version"])
+        for name, current in installed.items()
+        if name in index and Version(index[name]["version"]) > Version(current)
+    ]
 
     if not updates:
         print(" All skills are up to date.")
@@ -371,10 +324,9 @@ def cmd_update(args):
         print("Cancelled.")
         return
 
-    auth = get_auth_token()
     for name, _current, new_version in updates:
         entry   = index[name]
-        archive = download_skill(name, new_version, entry["artifact_url"], auth)
+        archive = download_skill(name, new_version, entry["artifact_url"])
         install_from_archive(name, archive)
 
     print(f"\n Updated {len(updates)} skill(s).")
@@ -401,7 +353,7 @@ def cmd_list(args):
 
 
 def cmd_info(args):
-    name = args.name
+    name     = args.name
     registry = load_registry(remote=False)
     index    = registry_index(registry)
 
@@ -468,7 +420,6 @@ Examples:
     p_info.add_argument("name", help="Skill name")
 
     args = parser.parse_args()
-
     dispatch = {
         "install":   cmd_install,
         "uninstall": cmd_uninstall,

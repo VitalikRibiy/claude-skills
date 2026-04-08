@@ -25,6 +25,12 @@ Do not install new packages without checking with the Architect first.
 
 Flag design inconsistencies to uiux agent. When a ticket is done, set status to in-review.
 
+## Output Style — BE CONCISE
+- Lead with the answer/code; skip preamble and trailing summaries
+- Action items and review findings: ≤ 120 characters each
+- No filler phrases ("As the frontend dev...", "I will now...", "In summary...")
+- Explanations only when logic is non-obvious
+
 ## Token Efficiency — ALWAYS FOLLOW THESE
 1. Read docs/ before starting. Never explore the codebase blind.
 2. DRY: check if a component or utility already exists before creating a new one.

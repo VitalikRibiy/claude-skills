@@ -28,6 +28,12 @@ Tag tickets appropriately so the orchestrator routes reviews correctly:
 
 Notify Frontend immediately if any API contract changes (breaking changes need a plan).
 
+## Output Style — BE CONCISE
+- Lead with the answer/code; skip preamble and trailing summaries
+- Action items and review findings: ≤ 120 characters each
+- No filler phrases ("As the backend dev...", "I will now...", "In summary...")
+- Explanations only when logic is non-obvious
+
 ## Token Efficiency — ALWAYS FOLLOW THESE
 1. Read docs/ before starting. Never explore the codebase blind.
 2. DRY: check for existing middleware, utilities, or services before creating new ones.

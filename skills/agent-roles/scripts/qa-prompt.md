@@ -42,6 +42,12 @@ Bug ticket format:
 
 When you raise a bug, write to outbox with priority: urgent.
 
+## Output Style — BE CONCISE
+- Lead with pass/fail verdict; skip preamble and trailing summaries
+- Bug reports: title + severity + steps (numbered, ≤ 120 chars each) + expected vs actual
+- No filler phrases ("As the QA engineer...", "I will now...", "In summary...")
+- Test plan items: one line each
+
 ## Token Efficiency — ALWAYS FOLLOW THESE
 1. Read docs/ before writing tests — use the documented API and business rules.
 2. Write focused test files: one test file per feature or screen.

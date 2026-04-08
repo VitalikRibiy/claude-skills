@@ -5,14 +5,14 @@
       "version": "1.0.0",
       "description": "Initializes and maintains the shared project workspace for the AI dev team. Creates the directory structure (inbox, outbox, decisions, specs, tickets, logs, docs with six domain subdirectories), seeds stub documentation files owned by each agent role, and writes the project README with token efficiency rules and workspace conventions. Run this skill before spawning any agents. Works standalone with no dependencies on other skills.",
       "depends_on": [],
-      "artifact_url": "https://pkgs.dev.azure.com/VitaliiRibii/claude-skills/_apis/packaging/feeds/claude-skills-feed/upack/packages/project-workspace/versions/1.0.0"
+      "artifact_url": "https://raw.githubusercontent.com/VitalikRibiy/claude-skills/main/dist/project-workspace-1.0.0.skill"
     },
     {
       "name": "team-protocol",
       "version": "1.0.0",
       "description": "Defines the inter-agent communication protocol and ticket schema for the AI dev team. Specifies the outbox message format (YAML frontmatter with from, to, priority, re, timestamp fields), priority levels, broadcast message handling, standard handoff patterns between roles, the orchestrator routing algorithm, the full ticket schema (frontmatter fields, status lifecycle, ticket types, ID scheme), and orchestrator ticket automation rules. Foundation skill with no dependencies on other skills.",
       "depends_on": [],
-      "artifact_url": "https://pkgs.dev.azure.com/VitaliiRibii/claude-skills/_apis/packaging/feeds/claude-skills-feed/upack/packages/team-protocol/versions/1.0.0"
+      "artifact_url": "https://raw.githubusercontent.com/VitalikRibiy/claude-skills/main/dist/team-protocol-1.0.0.skill"
     },
     {
       "name": "agent-roles",
@@ -24,12 +24,12 @@
           "version": ">=1.0.0"
         }
       ],
-      "artifact_url": "https://pkgs.dev.azure.com/VitaliiRibii/claude-skills/_apis/packaging/feeds/claude-skills-feed/upack/packages/agent-roles/versions/1.0.0"
+      "artifact_url": "https://raw.githubusercontent.com/VitalikRibiy/claude-skills/main/dist/agent-roles-1.0.0.skill"
     },
     {
       "name": "agent-launcher",
       "version": "1.0.0",
-      "description": "Launches Claude Code agent instances in Warp terminal tabs for the AI dev team. Writes agent system prompts from role templates (substituting workspace path and appending ADO addendum if configured), opens Warp tabs cross-platform (Windows via PowerShell SendKeys, macOS via AppleScript, Linux via xdotool with Wayland fallback), and seeds the PO/BA inbox. If tab automation fails on any platform, prints the exact manual command \u2014 no work is lost. Depends on agent-roles for prompt templates and project-workspace for the workspace directory structure.",
+      "description": "Launches Claude Code agent instances in terminal tabs for the AI dev team. Writes agent system prompts from role templates (substituting workspace path, injecting cross-project lessons, and optionally appending ADO addendum), opens tabs cross-platform (Windows via PowerShell, macOS via AppleScript, Linux via xdotool with Wayland fallback). If tab automation fails, prints the exact manual command. Depends on agent-roles and project-workspace.",
       "depends_on": [
         {
           "name": "agent-roles",
@@ -40,35 +40,38 @@
           "version": ">=1.0.0"
         }
       ],
-      "artifact_url": "https://pkgs.dev.azure.com/VitaliiRibii/claude-skills/_apis/packaging/feeds/claude-skills-feed/upack/packages/agent-launcher/versions/1.0.0"
+      "artifact_url": "https://raw.githubusercontent.com/VitalikRibiy/claude-skills/main/dist/agent-launcher-1.0.0.skill"
+    },
+    {
+      "name": "lessons-learned",
+      "version": "1.1.0",
+      "description": "Cross-project knowledge store for agent lessons learned. All lessons from all agents and all projects live in one shared file: ~/.claude/lessons.md. Injected into every agent system prompt at launch so past mistakes are never repeated. Agents append new lessons when a reviewer flags the same issue twice. Includes a CLI for manual management.",
+      "depends_on": [],
+      "artifact_url": "https://raw.githubusercontent.com/VitalikRibiy/claude-skills/main/dist/lessons-learned-1.1.0.skill"
     },
     {
       "name": "ado-integration",
       "version": "1.0.0",
-      "description": "Sets up and documents Azure DevOps MCP integration for the AI dev team. Provides an interactive setup script that checks Node.js 20+ and Azure CLI prerequisites, runs az login, gathers org/project/repo/wiki details, and writes .claude/mcp.json and project/ado-config.md. Contains the ADO addendum appended to every agent prompt when ADO is enabled, and a per-agent ADO operation reference covering work items, wiki, PRs, pipelines, and test plans. Run setup once per project. Depends on team-protocol.",
+      "description": "Optional Azure DevOps MCP integration for the AI dev team. Provides an interactive setup script that checks prerequisites (Node.js 20+, Azure CLI), prompts for your org/project/repo details, runs az login, and writes .claude/mcp.json and project/ado-config.md. Contains the ADO addendum appended to every agent prompt when ADO is enabled, and a per-agent ADO operation reference. Run setup once per project. Depends on team-protocol.",
       "depends_on": [
         {
           "name": "team-protocol",
           "version": ">=1.0.0"
         }
       ],
-      "artifact_url": "https://pkgs.dev.azure.com/VitaliiRibii/claude-skills/_apis/packaging/feeds/claude-skills-feed/upack/packages/ado-integration/versions/1.0.0"
+      "artifact_url": "https://raw.githubusercontent.com/VitalikRibiy/claude-skills/main/dist/ado-integration-1.0.0.skill"
     },
     {
       "name": "agent-orchestrator",
       "version": "1.0.0",
-      "description": "Orchestrates a 10-role AI dev team in Warp terminal tabs via Claude Code. Trigger on \"Avengers assemble\", \"spin up the team\", \"start the dev team\", or any multi-agent workflow request. Runs a Phase 1 intake interview (new vs existing project, ADO integration option), coordinates workspace init and ADO setup via dependency skills, spawns agents on demand in correct sequence, routes inter-agent messages from outbox to inbox, manages ticket lifecycle and mandatory review gates (reviewer always, plus dba/security/devops by tag), syncs tickets and docs to Azure DevOps, and handles failures.",
+      "description": "Orchestrates a 10-role AI dev team in terminal tabs via Claude Code. Trigger on \"Avengers assemble\", \"spin up the team\", or \"start the dev team\". Runs a Phase 1 intake interview (new vs existing project, optional Azure DevOps integration), coordinates workspace init via dependency skills, spawns agents on demand in correct sequence, routes inter-agent messages, manages ticket lifecycle and mandatory review gates (reviewer always, plus dba/security/devops by tag), and handles failures.",
       "depends_on": [
         {
           "name": "agent-launcher",
           "version": ">=1.0.0"
-        },
-        {
-          "name": "ado-integration",
-          "version": ">=1.0.0"
         }
       ],
-      "artifact_url": "https://pkgs.dev.azure.com/VitaliiRibii/claude-skills/_apis/packaging/feeds/claude-skills-feed/upack/packages/agent-orchestrator/versions/1.0.0"
+      "artifact_url": "https://raw.githubusercontent.com/VitalikRibiy/claude-skills/main/dist/agent-orchestrator-1.0.0.skill"
     }
   ]
 }

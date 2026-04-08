@@ -11,6 +11,7 @@ Usage:
     python3 launch_team.py --agents architect frontend        # spawn multiple
     python3 launch_team.py --all                             # spawn all 10
     python3 launch_team.py --ado-org contoso --agents po-ba  # with ADO
+    python3 launch_team.py --all --lessons-dir ~/.claude/lessons  # with lessons
 
 Requirements:
     - Warp terminal installed (https://warp.dev)
@@ -35,9 +36,9 @@ IS_LINUX   = SYSTEM == "Linux"
 # ── Team Roster ───────────────────────────────────────────────────────────────
 
 ALL_AGENTS = [
-    {"slug": "po-ba",     "name": "Product Owner / BA",    "emoji": "📋", "prompt_file": "po-ba-prompt.md"},
+    {"slug": "po-ba",     "name": "Product Owner / BA",    "emoji": "📋", "prompt_file": "po-ba-prompt.md",     "thinking_tokens": 10000},
     {"slug": "uiux",      "name": "UI/UX Designer",         "emoji": "🎨", "prompt_file": "uiux-prompt.md"},
-    {"slug": "architect", "name": "Software Architect",     "emoji": "🏗️", "prompt_file": "architect-prompt.md"},
+    {"slug": "architect", "name": "Software Architect",     "emoji": "🏗️", "prompt_file": "architect-prompt.md", "thinking_tokens": 10000},
     {"slug": "frontend",  "name": "Frontend Developer",     "emoji": "⚛️",  "prompt_file": "frontend-prompt.md"},
     {"slug": "backend",   "name": "Backend Developer",      "emoji": "⚙️",  "prompt_file": "backend-prompt.md"},
     {"slug": "dba",       "name": "Database Administrator", "emoji": "🗄️", "prompt_file": "dba-prompt.md"},
@@ -48,6 +49,8 @@ ALL_AGENTS = [
 ]
 
 AGENT_BY_SLUG = {a["slug"]: a for a in ALL_AGENTS}
+
+LESSONS_FILE = os.path.join(os.path.expanduser("~"), ".claude", "lessons.md")
 
 # ── Self-config block appended to every agent prompt ──────────────────────────
 
@@ -88,11 +91,36 @@ _Last updated: <today> | Project: <name>_
 Update this file after every task — keep the heatmap current.
 """
 
+# ── Lessons Injection ─────────────────────────────────────────────────────────
+
+def build_lessons_block() -> str:
+    """Read the shared lessons file and return an injection block."""
+    if os.path.exists(LESSONS_FILE):
+        with open(LESSONS_FILE, encoding="utf-8") as f:
+            content = f.read().strip()
+        if not content:
+            content = "_No lessons recorded yet._"
+    else:
+        content = "_No lessons recorded yet._"
+
+    return f"""
+## Lessons from Past Projects
+
+{content}
+
+---
+**When to add a new lesson:** A reviewer flags the same issue twice in one session,
+or you catch yourself about to repeat a known mistake.
+Append to `{LESSONS_FILE}`:
+`- [YYYY-MM-DD] [your-role] **Short title**: what went wrong → what to do instead`
+"""
+
+
 # ── Prompt Writing ─────────────────────────────────────────────────────────────
 
 def write_agent_prompt(agent: dict, workspace: str, templates_dir: str,
                        ado_org: str = None, ado_project: str = None,
-                       ado_repo: str = None) -> bool:
+                       ado_repo: str = None, inject_lessons: bool = True) -> bool:
     """Build and save the merged agent prompt. Returns True if successful."""
     logs_dir = os.path.join(workspace, "logs")
     os.makedirs(logs_dir, exist_ok=True)
@@ -108,6 +136,9 @@ def write_agent_prompt(agent: dict, workspace: str, templates_dir: str,
     content = content.replace("{{WORKSPACE_PATH}}", workspace)
     content += SELF_CONFIG_BLOCK.format(
         slug=agent["slug"], role=agent["name"], workspace=workspace)
+
+    if inject_lessons:
+        content += "\n\n---\n\n" + build_lessons_block()
 
     if ado_org:
         # Look for ado-addendum.md relative to this script's location
@@ -131,144 +162,112 @@ def write_agent_prompt(agent: dict, workspace: str, templates_dir: str,
     return True
 
 
-# ── Cross-Platform Warp Tab Launcher ──────────────────────────────────────────
+# ── Cross-Platform Terminal Launcher ─────────────────────────────────────────
 
-def open_warp_tab(agent: dict, workspace: str, delay: float = 1.5) -> bool:
-    """Open a new Warp tab and run the claude agent."""
+def open_terminal_window(agent: dict, workspace: str, delay: float = 1.5) -> bool:
+    """Open a new terminal window and run the claude agent."""
     prompt_path = os.path.join(workspace, "logs", agent["prompt_file"])
     tab_title   = f"{agent['emoji']} {agent['name']}"
-    claude_cmd  = f'claude --system-file "{prompt_path}"'
+    thinking_flag = f' --thinking-budget-tokens {agent["thinking_tokens"]}' if agent.get("thinking_tokens") else ''
+    claude_cmd  = f'claude{thinking_flag} --system-prompt-file "{prompt_path}"'
 
     if IS_MAC:
-        return _open_warp_tab_mac(tab_title, claude_cmd, delay)
+        return _open_terminal_mac(tab_title, claude_cmd, delay)
     elif IS_WINDOWS:
-        return _open_warp_tab_windows(tab_title, claude_cmd, delay)
+        return _open_terminal_windows(tab_title, claude_cmd, delay)
     else:
-        return _open_warp_tab_linux(tab_title, claude_cmd, delay)
+        return _open_terminal_linux(tab_title, claude_cmd, delay)
 
 
-def _open_warp_tab_mac(tab_title: str, claude_cmd: str, delay: float) -> bool:
-    """macOS — AppleScript via osascript."""
+def _open_terminal_mac(tab_title: str, claude_cmd: str, delay: float) -> bool:
+    """macOS — new Terminal.app window via AppleScript."""
+    escaped = claude_cmd.replace('"', '\\"')
     script = f"""
-tell application "Warp"
+tell application "Terminal"
+    do script "{escaped}"
     activate
-end tell
-delay 0.5
-tell application "System Events"
-    tell process "Warp"
-        keystroke "t" using command down
-        delay {delay}
-        keystroke "printf '\\\\033]0;{tab_title}\\\\007'"
-        key code 36
-        delay 0.3
-        keystroke "{claude_cmd}"
-        key code 36
-    end tell
 end tell
 """
     result = subprocess.run(["osascript", "-e", script],
                             capture_output=True, text=True)
     if result.returncode != 0:
         print(f"\n    ⚠️  AppleScript failed: {result.stderr.strip()}")
-        print(f"    Run manually in Warp: {claude_cmd}")
-        return False
-    return True
-
-
-def _open_warp_tab_windows(tab_title: str, claude_cmd: str, delay: float) -> bool:
-    """
-    Windows — PowerShell SendKeys to Warp.
-    Falls back to printing the manual command if automation fails.
-    """
-    ps_script = f"""
-Add-Type -AssemblyName System.Windows.Forms
-Start-Sleep -Milliseconds 500
-
-# Bring Warp to front
-$warp = Get-Process -Name "Warp" -ErrorAction SilentlyContinue
-if ($warp) {{
-    Add-Type @"
-    using System;
-    using System.Runtime.InteropServices;
-    public class Win32 {{
-        [DllImport("user32.dll")]
-        public static extern bool SetForegroundWindow(IntPtr hWnd);
-    }}
-"@
-    [Win32]::SetForegroundWindow($warp.MainWindowHandle) | Out-Null
-    Start-Sleep -Milliseconds 500
-}}
-
-# Open new tab (Ctrl+T in Warp on Windows)
-[System.Windows.Forms.SendKeys]::SendWait("^t")
-Start-Sleep -Milliseconds {int(delay * 1000)}
-
-# Type the command
-[System.Windows.Forms.SendKeys]::SendWait("{claude_cmd.replace('"', '`"')}")
-[System.Windows.Forms.SendKeys]::SendWait("{{ENTER}}")
-"""
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0:
         _print_manual_fallback(tab_title, claude_cmd)
         return False
+    time.sleep(delay)
     return True
 
 
-def _open_warp_tab_linux(tab_title: str, claude_cmd: str, delay: float) -> bool:
+def _open_terminal_windows(tab_title: str, claude_cmd: str, delay: float) -> bool:
     """
-    Linux — try xdotool (X11) or wmctrl combo. Falls back to manual command.
+    Windows — tries two strategies in order:
+    1. Windows Terminal (wt new-tab) if available
+    2. New PowerShell window via Start-Process
     """
-    time.sleep(0.5)
-
-    # Try xdotool first (X11)
-    if subprocess.run(["which", "xdotool"], capture_output=True).returncode == 0:
-        try:
-            subprocess.run(["xdotool", "search", "--name", "Warp",
-                            "windowactivate", "--sync"], check=True, capture_output=True)
-            time.sleep(0.3)
-            subprocess.run(["xdotool", "key", "ctrl+t"], check=True)
+    # ── Strategy 1: Windows Terminal ─────────────────────────────────────────
+    wt = subprocess.run(["where", "wt"], capture_output=True, text=True)
+    if wt.returncode == 0:
+        result = subprocess.run(
+            ["wt", "new-tab", "--title", tab_title, "--suppressApplicationTitle",
+             "--", "powershell", "-NoExit", "-Command", claude_cmd],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
             time.sleep(delay)
-            subprocess.run(["xdotool", "type", "--clearmodifiers", claude_cmd], check=True)
-            subprocess.run(["xdotool", "key", "Return"], check=True)
             return True
-        except subprocess.CalledProcessError:
-            pass
 
-    # Try wmctrl + xdotool combo
-    if subprocess.run(["which", "wmctrl"], capture_output=True).returncode == 0:
-        try:
-            subprocess.run(["wmctrl", "-a", "Warp"], check=True, capture_output=True)
-            time.sleep(0.3)
-            subprocess.run(["xdotool", "key", "ctrl+t"], check=True)
-            time.sleep(delay)
-            subprocess.run(["xdotool", "type", "--clearmodifiers", claude_cmd], check=True)
-            subprocess.run(["xdotool", "key", "Return"], check=True)
-            return True
-        except subprocess.CalledProcessError:
-            pass
+    # ── Strategy 2: New PowerShell window ────────────────────────────────────
+    safe_cmd = claude_cmd.replace("'", "''")
+    ps_cmd = f"Start-Process powershell -ArgumentList '-NoExit', '-Command', '{safe_cmd}'"
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        time.sleep(delay)
+        return True
 
     _print_manual_fallback(tab_title, claude_cmd)
     return False
 
 
+def _open_terminal_linux(tab_title: str, claude_cmd: str, delay: float) -> bool:
+    """
+    Linux — tries common terminal emulators in order, falls back to manual.
+    """
+    terminals = [
+        ["gnome-terminal", "--title", tab_title, "--", "bash", "-c",
+         f'{claude_cmd}; exec bash'],
+        ["xterm", "-title", tab_title, "-e", f'{claude_cmd}; bash'],
+        ["konsole", "--new-tab", "-e", f'{claude_cmd}; bash'],
+        ["xfce4-terminal", "--title", tab_title, "-e", f'{claude_cmd}; bash'],
+    ]
+    for cmd in terminals:
+        if subprocess.run(["which", cmd[0]], capture_output=True).returncode == 0:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                time.sleep(delay)
+                return True
+    _print_manual_fallback(tab_title, claude_cmd)
+    return False
+
+
 def _print_manual_fallback(tab_title: str, claude_cmd: str):
-    print(f"\n    ℹ️  Open a new Warp tab manually and run:")
+    print(f"\n    ℹ️  Open a new terminal window manually and run:")
     print(f"       {claude_cmd}")
 
 
 def spawn_agent(agent: dict, workspace: str, templates_dir: str,
                 ado_org=None, ado_project=None, ado_repo=None,
-                delay: float = 1.5) -> bool:
+                inject_lessons: bool = True, delay: float = 1.5) -> bool:
     """Write prompt and open Warp tab for one agent."""
     print(f"  {agent['emoji']} Spawning {agent['name']}...", end=" ", flush=True)
-    ok = write_agent_prompt(agent, workspace, templates_dir, ado_org, ado_project, ado_repo)
+    ok = write_agent_prompt(agent, workspace, templates_dir, ado_org, ado_project, ado_repo,
+                            inject_lessons=inject_lessons)
     if not ok:
         print("❌ (prompt template missing)")
         return False
-    ok = open_warp_tab(agent, workspace, delay)
+    ok = open_terminal_window(agent, workspace, delay)
     if ok:
         print("✅")
     else:
@@ -311,13 +310,16 @@ def main():
     parser.add_argument("--ado-org",     default=None)
     parser.add_argument("--ado-project", default=None)
     parser.add_argument("--ado-repo",    default=None)
+    parser.add_argument("--no-lessons", action="store_true",
+                        help="Skip lessons injection")
     args = parser.parse_args()
 
-    workspace     = os.path.abspath(args.workspace)
-    templates_dir = resolve_templates_dir(args.templates_dir)
-    ado_org       = args.ado_org
-    ado_project   = args.ado_project or (ado_org and "MyProject") or None
-    ado_repo      = args.ado_repo    or ado_project or None
+    workspace       = os.path.abspath(args.workspace)
+    templates_dir   = resolve_templates_dir(args.templates_dir)
+    ado_org         = args.ado_org
+    ado_project     = args.ado_project or None
+    ado_repo        = args.ado_repo    or ado_project or None
+    inject_lessons  = not args.no_lessons
 
     agents_to_spawn = (ALL_AGENTS if args.spawn_all
                        else [AGENT_BY_SLUG[s] for s in args.agents]
@@ -329,6 +331,9 @@ def main():
     print(f"📂 Templates:  {templates_dir}")
     if ado_org:
         print(f"🔷 Azure DevOps: {ado_org}/{ado_project}")
+    if inject_lessons:
+        status = "found" if os.path.exists(LESSONS_FILE) else "empty (will be created on first lesson)"
+        print(f"📚 Lessons:    {LESSONS_FILE}  [{status}]")
     print(f"🤖 Agents:     {', '.join(a['slug'] for a in agents_to_spawn)}\n")
 
     if not os.path.isdir(workspace):
@@ -344,11 +349,12 @@ def main():
             print("ℹ️  xdotool not found. Tab automation disabled.")
             print("   Install: sudo apt install xdotool   (or run agents manually)\n")
 
-    print("🚀 Launching Warp tabs...\n")
+    print("🚀 Launching terminal windows...\n")
     spawned = []
     for agent in agents_to_spawn:
         ok = spawn_agent(agent, workspace, templates_dir,
-                         ado_org, ado_project, ado_repo, args.tab_delay)
+                         ado_org, ado_project, ado_repo,
+                         inject_lessons=inject_lessons, delay=args.tab_delay)
         if ok:
             spawned.append(agent)
         time.sleep(args.tab_delay)
@@ -361,9 +367,9 @@ def main():
 {chr(10).join(f"  {a['emoji']} {a['name']}" for a in spawned)}
 
 Prompts written to: {workspace}/logs/
-If any tabs didn't open automatically, run the printed command in a new Warp tab.
+If any windows didn't open automatically, run the printed command in a new terminal.
 
-Next: switch to the active tab and give the agent their first task.
+Next: switch to the agent's terminal and give them their first task.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
 
